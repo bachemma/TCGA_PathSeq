@@ -1,0 +1,1155 @@
+---
+title: "TCGA_PathSeq"
+format: html
+editor: visual
+---
+
+```{r}
+#| label: library
+#| message: false 
+
+library(dplyr)
+library(tidyverse)
+library(purrr)
+library(readr)
+
+```
+
+```{r}
+#| label: download 
+
+paths <- list.files("data/scores/scores",pattern= "score[.]txt$", full.names= TRUE, recursive= TRUE)
+
+data <- paths|> 
+  set_names(basename)|> 
+  map(~ read_tsv(.x, show_col_types = FALSE)) |>
+  list_rbind(names_to = "id")
+  
+
+data <- data |> 
+  mutate(id = str_remove_all(id, "\\_score\\.txt")) |> 
+  mutate(across(where(is.character), tolower))
+
+
+clinical <- read_delim('data/metadata/uuid_metadata.csv')
+
+metada <- data |> 
+  full_join(clinical, by='id')
+
+```
+
+-\> 506 id
+
+-\> over than 1000 different kinds of bacteria in one sample
+
+```{r}
+fusobacterium_nucleatum <- 
+  metada|>
+  filter(str_detect(taxonomy, "fusobacterium_nucleatum"))
+
+fusobacterium_nucleatum_species <- fusobacterium_nucleatum |>
+  filter(type == 'species')
+
+
+```
+
+So 373 samples out of 506 contain the species Fusobacterium_nucleatum.
+
+If we plot the normalized score, i.e. the percentage of Fusobacterium nucleatum as a species within the bacteria for each sample (logarythmic scale)
+
+```{r}
+fusobacterium_nucleatum_species |> 
+  ggplot(aes(x=reorder(id, score_normalized), y= score_normalized))+
+  geom_point()+
+  theme(axis.text.x = element_blank())+
+  geom_hline(yintercept = 2)+
+  labs(x = 'samples', y = 'Percentage of Fusobacterium_nucleatum')
+
+
+```
+
+look at the clinical characteristics of samples with a normalized score for Fusobacterium nucleatum \> 2
+
+```{r}
+
+samples_fuso <- metada |> 
+  filter(name == 'fusobacterium_nucleatum') |> 
+  filter(score_normalized > 2)
+
+samples_fuso |> 
+  ggplot(aes(smoking))+
+  geom_histogram(stat= "count")
+
+```
+
+more smokers than non-smokers in Fusobacterium nucleatum-rich samples
+
+```{r}
+
+samples_fuso |> 
+  ggplot(aes(site))+
+  geom_histogram(stat= "count")
+```
+
+```{r}
+porphyromonas_gingivalis_species <-
+  metada |> 
+  filter(str_detect(taxonomy, 'porphyromonas_gingivalis')) |>
+  filter(type == 'species')#pour supprimer les souches 'no_rank'
+
+```
+
+255 samples with porphyromonas gingivalis
+
+```{r}
+
+porphyromonas_gingivalis_species |> 
+  ggplot(aes(x=reorder(id, score_normalized), y= score_normalized))+
+  geom_point()+
+  theme(axis.text.x = element_blank())+
+  geom_hline(yintercept = 0.3)+
+  labs(x = 'samples', y = 'Percentage of Porphyromonas gingivalis')
+
+samples_porphyro <- metada |> 
+  filter(name == 'porphyromonas_gingivalis') |> 
+  filter(score_normalized > 0.3)
+
+samples_porphyro|> 
+  ggplot(aes(smoking))+
+  geom_histogram(stat= "count")
+
+```
+
+So now for viruses
+
+```{r}
+
+virus <- 
+  metada |> 
+  filter(kingdom == 'viruses')
+
+virus_papilloma <- virus|> 
+  filter(str_detect(taxonomy, 'papillomaviridae')) |> 
+  filter(type == 'genus')
+
+```
+
+I first focused on the families of papilloma, herpes, and polyomavirus to compare them with the results from the Wisconsin cohort. Among the viruses, in the Papillomaviridae family, only the genus Alphapapillomavirus is present, and only in 25 samples
+
+```{r}
+virus_HPV16 <- virus |> 
+  filter(str_detect(taxonomy, 'papillomaviridae')) |> 
+  filter(type == 'no_rank')
+
+virus_HPV16 |>
+  group_by(sub_site) |>
+  count()
+```
+
+And these are only HPV16, so we can be fairly confident with this identification. The majority (18/25) correspond to oropharynx and are all classified as HPV positive.
+
+```{r}
+virus_HPV16 |>
+  mutate(ratio = unambiguous/reads)|> 
+  ggplot(aes(reorder(id, -ratio), ratio))+
+  geom_point()+
+  theme(axis.text.x = element_blank())
+
+virus_HPV16 |>
+  group_by(sub_site) |> 
+  count()
+  
+```
+
+```{r}
+virus_HPV16|> 
+  ggplot(aes(reorder(id, -score_normalized), score_normalized))+
+  geom_point()+
+  theme(axis.text.x = element_blank())+
+  labs(x = 'samples', y='Percentage of HPV16')
+
+```
+
+These are not at all the same scores_normalized with certain samples that are only positive for HPV16.
+
+```{r}
+virus_herpes <- virus|> 
+  filter(str_detect(taxonomy, 'herpes'))
+
+virus_herpes |>
+  filter(type == 'genus') |>
+count(name)
+```
+
+For the Herpes family, there are 25 samples with viruses from the Herpesviridae family, including the genera: Roseolovirus 11, Simplexvirus 12, Varicellovirus 1, and Lymphocryptovirus 1, comprising 10 different species, among which Human alphaherpesvirus 1 is the most frequent at 12. And there IS just one sample positive for polyomavirus.
+
+```{r}
+virus_herpes_species <- 
+  virus_herpes |>
+  filter(type ==  'species')
+
+virus_herpes_species |>
+  count(name)
+  
+```
+
+```{r}
+virus_polyo <- virus |> filter(str_detect(taxonomy, 'polyo'))
+```
+
+```{r}
+virus |> 
+  filter(type == 'order') |> 
+  group_by(name) |> 
+  count()
+
+  
+```
+
+455 samples are positive for viruses.
+
+if we look at the taxonomic level of the order, we get 5 order but we don't capture all the viruses: there are only around 400 samples. For example, for the papillomaviridae family, PathSeq doesn't mention the order, it stops at the family level
+
+if we look at the taxonomic level of family, we get 28 families of viruses but it's the same we don't capture all the viruses and all the samples(439)
+
+we have to use the taxon 'species' to capture all the samples and viruses but the problem is that we have 353 different species which is going to be very problematic to analyze.
+
+```{r}
+virus |> 
+  filter(type == 'species') |> 
+ group_by(name) |> 
+  count()
+```
+
+```{r}
+tongue <- 
+  metada |> 
+  filter(sub_site == 'Oral Tongue') |> 
+  filter(cluster == '5mC deamin' | cluster == 'SBS16-like')
+
+tongue_virus <- 
+  tongue |> 
+  filter(kingdom == 'viruses')
+
+
+```
+
+I was only interested in the tongue of clusters 5mc deamin and SBS16 like
+
+```{r}
+tongue_virus_species <- 
+  tongue_virus |> 
+  filter(type == 'species')|> 
+  filter(!str_detect(name, 'phage')) |> 
+  mutate(type = sapply(str_split(taxonomy, "\\|"), function(x) if(length(x) >= 4) x[4] else NA))
+
+tongue_virus_species |> 
+  group_by(type) |> 
+  count() 
+```
+
+I obtained this list by taking the 4th level of the taxonomic classification and we get families and orders.
+
+caudovirales, which are the most common, are an order of bacteriophage viruses and are suppressed
+
+```{r}
+tongue_virus_species <- tongue_virus_species |> 
+  filter(! type == 'caudovirales')
+
+```
+
+```{r}
+tongue_virus_species <- tongue_virus_species|> 
+  group_by(type) |> 
+  mutate (n = n()) |> 
+  ungroup()
+
+tongue_virus_species |>
+  ggplot(aes(x= id, fill=type))+
+  geom_bar()+
+  facet_wrap(~cluster, scales= 'free_x')+
+  theme(axis.text.x = element_blank())+
+  scale_fill_manual(values = c(
+    "adenoviridae" = "#1f77b4", 
+    "baculoviridae" = "#ff7f0e",  
+    "endornaviridae" = "#2ca02c",  
+    "genomoviridae" = "#d62728",  
+    "geobacillus_virus_e2" = "#9467bd",  
+    "herpesvirales" = "#8c564b",  
+    "inoviridae" = "#e377c2",  
+    "microviridae" = "#7f7f7f",  
+    "papillomaviridae" = "#bcbd22",  
+    "phycodnaviridae" = "#17becf",
+    "retroviridae" = "#aec7e8",
+    "ssrna_negative-strand_viruses" = "#ffbb78", 
+    "ssrna_positive-strand_viruses,_no_dna_stage" = "#98df8a" 
+  ))
+```
+
+53 samples are positive for this different types of virus.
+
+Among these types of virus, we keep only those known to infect humans
+
+```{r}
+tongue_virus_human <- tongue_virus_species |>
+  filter (type == 'adenoviridae' | type == 'papillomaviridae' | type == 'herpesvirales' | type == 'retroviridae')
+
+tongue_virus_human |> 
+  distinct(id)
+
+tongue_virus_species |> 
+  filter (type == 'adenoviridae' | type == 'papillomaviridae' | type == 'herpesvirales' | type == 'retroviridae') |> 
+  ggplot(aes(x= id, fill=type))+
+  geom_bar()+
+  facet_wrap(~cluster, scales = 'free_x')+
+  theme(axis.text.x = element_blank())+
+  scale_fill_manual(values = c(
+    "adenoviridae" = "#1f77b4", 
+    "herpesvirales" = "#8c564b",  
+    "papillomaviridae" = "#bcbd22",  
+    "retroviridae" = "#aec7e8"
+  ))
+  
+```
+
+After this selection, only 25 patients remain with 4 different families of virus.
+
+```{r}
+virus <- virus|>
+  filter(type == 'species') |>
+  mutate(type = sapply(str_split(taxonomy, "\\|"), function(x) if(length(x) >= 4) x[4] else NA)) 
+ 
+
+virus |>
+  group_by(type) |> 
+  count(type)
+```
+
+Virus that affect humans : adenoviridae, herpesvirales, papillomaviridae, parvoviridae, polyomaviridae, poxviridae, retroviridae
+
+```{r}
+virus_human <- virus |>
+  filter(type == 'adenoviridae' | type == 'herpesvirales'| type == 'papillomaviridae'| type =='parvoviridae'| type == 'polyomaviridae'| type == 'poxviridae' | type =='retroviridae')
+
+virus_human |>
+  distinct(id)
+   
+```
+
+164 samples with positive detection for virus infected human
+
+```{r}
+virus_human |> ggplot(aes(x= id, fill=type))+
+  geom_bar(position = 'fill')+
+  facet_wrap(~site, scales = 'free_x')+
+  theme(axis.text.x = element_blank())+
+   scale_fill_manual(values = c(
+     "adenoviridae" = "#1f77b4", 
+    "herpesvirales" = "#8c564b",  
+    "papillomaviridae" = "#bcbd22",  
+    "retroviridae" = "#aec7e8", 
+    'parvoviridae'= "#d62728", 
+    'polyomaviridae'= "#ff7f0e", 
+    'poxviridae'= "#9467bd"
+    ))+
+  labs(title = 'Distribution of the families of Virus infecting humans by sites')
+  
+```
+
+```{r}
+virus_human |> ggplot(aes(x= id, fill=type))+
+  geom_bar(position = 'fill')+
+  facet_wrap(~sub_site, scales = 'free_x')+
+  theme(axis.text.x = element_blank())+
+   scale_fill_manual(values = c(
+     "adenoviridae" = "#1f77b4", 
+    "herpesvirales" = "#8c564b",  
+    "papillomaviridae" = "#bcbd22",  
+    "retroviridae" = "#aec7e8", 
+    'parvoviridae'= "#d62728", 
+    'polyomaviridae'= "#ff7f0e", 
+    'poxviridae'= "#9467bd"
+    ))+
+  labs(title = 'Distribution of the families of Virus infecting humans by sub-sites')
+```
+
+The normalized score represents the percentage of a taxon within the same kingdom for a sample
+
+Species of interest with their id number :
+
+```{r}
+sp <- c("fusobacterium_nucleatum","candida_albicans","neisseria_mucosa", "streptococcus_mitis", "rothia_mucilaginosa", "porphyromonas_gingivalis", "tannerella_forsythia", "parvimonas_micra", "porphyromonas_catoniae", "peptostreptococcus_stomatis")
+
+sp_id <- c(851, 5476, 488, 28037, 43675, 837, 28112, 33033, 41976, 341694)
+```
+
+How many tongue , primary tumor ?
+
+```{r}
+
+metada_tongue <- metada |>
+  filter(sample_type == 'Primary Tumor') |>
+  filter(sub_site == 'Oral Tongue') |>
+  filter(!is.na(NIRF)) |>
+  group_by(NIRF) |>
+  mutate(n_samples = n_distinct(id)) |>
+  ungroup() |> 
+  mutate(status = if_else(tax_id %in% sp_id, 1, 0)) |> 
+  group_by(id) |>
+  mutate(positive = if_else(sum(status)>=1, 1, 0)) |>
+  ungroup() |>
+  group_by(NIRF, positive)|>
+  mutate(n_sp = n_distinct(id))|>
+  ungroup()
+
+metada_tongue |> group_by(NIRF) |> 
+  summarise(n= n_distinct(id)) |> 
+  ggplot(aes(NIRF, n))+
+  geom_col()+
+  labs(title = 'Number of tongue samples between NIRF and non NIRF', y = 'Samples')
+
+metada_summary <- metada_tongue |>
+  group_by(NIRF, positive) |>
+  summarise(n = n_distinct(id), .groups = 'drop')
+
+metada_total <- metada_tongue |>
+  group_by(NIRF) |>
+  summarise(total_n = n_distinct(id), .groups = 'drop')
+
+
+metada_plot_data <- metada_total |>
+  left_join(metada_summary, by = "NIRF")
+
+
+metada_plot_data |> ggplot(aes(x = NIRF, y = n, fill = as.factor(positive))) +
+  geom_col(position = "stack") +
+  labs(x = "NIRF", y = "Samples", fill = "Positive Status") +
+  scale_fill_manual(values = c("0" = "grey", "1" = "darkolivegreen4")) +
+  theme_minimal()+
+  labs(title='Number of samples positive for at least one pathogen of interest')
+
+```
+
+```{r}
+metada_name <- metada_tongue |> 
+  filter(tax_id %in% sp_id) |> 
+  group_by(name, NIRF) |> 
+  summarise(n_names = n_distinct(id), .groups='drop')# number of positive samples for each pathogen of interest 
+
+metada_plot_name <- metada_total |>
+  left_join(metada_name, by = "NIRF")
+
+#rajouter une info = les négatifs 
+metada_plot_name <- metada_plot_name |> 
+  rename (present = n_names) |> 
+  mutate(absent = total_n - present)|> #number of negative samples for each pathogen of interest 
+  pivot_longer(cols = present:absent, 
+               names_to = 'status', 
+               values_to = 'samples')
+
+metada_plot_name |>
+  mutate(name = factor(name, levels= sp)) |> 
+  ggplot(aes(x = NIRF, y = samples, fill = status)) +
+  geom_col() +
+  facet_wrap(~name, nrow= 2, scales= 'free')+
+  labs(x = "NIRF", y = "Samples") +
+  #scale_fill_manual(values = c("0" = "grey", "1" = "darkolivegreen4")) +
+  theme_minimal()
+  
+
+name_colors <- c(
+  "fusobacterium_nucleatum_present" = "indianred",
+  "fusobacterium_nucleatum_absent" = "grey",
+  "candida_albicans_present" = "lightblue",
+  "candida_albicans_absent" = "grey",
+  "neisseria_mucosa_present" = "lightgreen",
+  "neisseria_mucosa_absent" = "grey",
+  "streptococcus_mitis_present" = "purple",
+  "streptococcus_mitis_absent" = "grey",
+  "rothia_mucilaginosa_present" = "orange",
+  "rothia_mucilaginosa_absent" = "grey",
+  "porphyromonas_gingivalis_present" = "pink",
+  "porphyromonas_gingivalis_absent" = "grey",
+  "tannerella_forsythia_present" = "yellow",
+  "tannerella_forsythia_absent" = "grey",
+  "parvimonas_micra_present" = "navy",
+  "parvimonas_micra_absent" = "grey",
+  "porphyromonas_catoniae_present" = "cyan",
+  "porphyromonas_catoniae_absent" = "grey",
+  "peptostreptococcus_stomatis_present" = "magenta",
+  "peptostreptococcus_stomatis_absent" = "grey"
+)
+
+
+# Modifier le dataframe et créer le graphique
+metada_plot_name |>
+  mutate(name = factor(name, levels = sp),
+         fill_var = paste(name, ifelse(status == "present", "present", "absent"), sep = "_")) |>
+  ggplot(aes(x = NIRF, y = samples, fill = fill_var)) +
+  geom_col() +
+  facet_wrap(~name, nrow = 2, scales = 'free') +
+  labs(x = "NIRF", y = "Samples", fill = "Presence of Pathogens") +
+  scale_fill_manual(
+    values = name_colors
+  ) +
+  theme_minimal()+
+   theme(legend.position = "none", 
+         strip.text = element_text(size = 12))
+
+```
+
+Heatmap
+
+```{r}
+#heatmap for the presence/absence of each pathogens in each sample
+
+library(ComplexHeatmap)
+
+ht<- metada_tongue |>
+  filter(tax_id %in% sp_id) |>
+  select(name, id) |>
+  mutate( presence = 1) |>
+  pivot_wider(names_from = name, 
+              values_from = presence, 
+              values_fill = 0) |> 
+  column_to_rownames("id") |> 
+  t() |> 
+  as.matrix()
+
+
+data_annotation <- metada |> 
+  filter(sample_type == 'Primary Tumor') |> 
+  filter(sub_site == 'Oral Tongue') |> 
+  filter(!is.na(NIRF)) |>
+  filter(tax_id %in% sp_id) |>
+  select(id, NIRF) |>
+  distinct() |>
+  column_to_rownames('id')
+
+NIRF_pal <- setNames(c("indianred", "lightskyblue"), c("no", "yes"))
+heatmap_colors <- c("0" = "lemonchiffon2", "1" = "indianred3")
+
+
+ha <- HeatmapAnnotation(df =data_annotation, 
+                        col = list(
+                          NIRF = NIRF_pal
+                        ))
+
+
+Heatmap(ht, 
+        show_column_names = FALSE,
+        #column_split = data_annotation$NIRF,
+        top_annotation = ha, 
+        col = heatmap_colors, 
+        #show_row_dend= FALSE, 
+        name = 'Presence of Pathogens', 
+         height =unit(4, "cm"))
+```
+
+```{r}
+
+pathogens_tongue <- metada_tongue |>
+  filter(tax_id %in% sp_id)
+
+pathogens_tongue |>
+  ggplot(aes(NIRF, score_normalized, fill=NIRF))+
+ geom_boxplot(width = 0.2, outliers=FALSE) +
+    geom_jitter(alpha = 0.6) +
+  facet_wrap(~name, nrow=2, scales = 'free')+
+    theme_minimal()+
+# scale_y_continuous(trans='log10')+
+  labs(title = 'Relative abundance of each pathogen of interest between NIRF and non NIRF', y='abundance')
+```
+
+```{r}
+pathogens_tongue |>
+  filter(name== 'candida_albicans') |> 
+  ggplot(aes(NIRF, score_normalized.x, fill=NIRF))+
+ geom_boxplot(width = 0.2, outliers= FALSE) +
+   # geom_jitter(alpha = 0.6) +
+ # facet_wrap(~name, nrow=2, scales = 'free')+
+    theme_minimal()
+ # scale_y_continuous(trans='log10')
+```
+
+```{r}
+pathogens_tongue |>
+  filter(name== 'fusobacterium_nucleatum') |> 
+  ggplot(aes(NIRF, abundance, fill=NIRF))+
+ geom_boxplot(width = 0.2) +
+    geom_jitter(alpha = 0.6) +
+ # facet_wrap(~name, nrow=2, scales = 'free')+
+    theme_minimal()+
+  scale_y_continuous(trans='log10')
+```
+
+```{r}
+ht_pathogens_tongue <- pathogens_tongue|>
+  select(id, NIRF, name, score_normalized)|>
+  pivot_wider(names_from =name, 
+              values_from =score_normalized, 
+              values_fill= 0)
+
+wilcox_test <- function(data, pathogene) {
+  test_result <- wilcox.test(data[[pathogene]] ~ data$NIRF)
+  return(test_result$p.value)
+}
+
+
+wilcox.test(fusobacterium_nucleatum ~NIRF, ht_pathogens_tongue)
+```
+
+```{r}
+
+clst_lst <- clinical|>
+  pull(cluster)|> 
+  na.omit()|>
+  unique()
+
+clst_pal <- RColorBrewer::brewer.pal(n = 4, 
+                                     name = "Set1")|>
+  set_names(clst_lst)
+
+site_pal <- RColorBrewer::brewer.pal(n = 4, name = "Set3")
+
+
+
+```
+
+```{r}
+
+metada <- metada |>
+  filter(sample_type == 'Primary Tumor')
+
+pathogens<- metada |>
+  filter(tax_id %in% sp_id)
+
+pathogens |>
+  filter(!is.na(sub_site)) |> 
+  ggplot(aes(site, score_normalized, fill=site))+
+ geom_boxplot(width = 0.2, outliers= FALSE) +
+   # geom_jitter(alpha = 0.6) +
+  facet_wrap(~name, nrow=2, scale= 'free')+
+   scale_fill_manual(values = site_pal)+
+    theme_minimal()+
+ #scale_y_continuous(trans='log10')+
+  labs(title = 'Relative abundance of each pathogen of interest', y='abundance')+
+  theme(
+    axis.title.x = element_blank(),
+     axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank()# This also removes the x-axis title
+  )
+
+pathogens |>
+  filter(!is.na(site)) |> 
+  ggplot(aes(site, score_normalized, color=site))+
+  geom_jitter(alpha = 0.6, width = 0.2) + 
+  stat_summary(fun = median, geom = "crossbar", color = "black", width = 0.5, size = 0.5) +
+  facet_wrap(~name, nrow=2, scale = 'free')+
+  scale_color_manual(values = site_pal)+
+  theme_minimal()+
+  #scale_y_continuous(trans='log10')+
+  labs(title = 'Relative abundance of each pathogen of interest', y='abundance')+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 7)
+  )
+```
+
+```{r}
+pathogens_filtered <- pathogens |>
+  filter(!is.na(site)) |>
+  filter(!is.na(cluster)) |> 
+  group_by(site, name) |>
+  mutate(
+    Q1 = quantile(score_normalized, 0.25),
+    Q3 = quantile(score_normalized, 0.75),
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR
+  ) |>
+  filter(score_normalized >= lower_bound & 
+           score_normalized <= upper_bound) |> 
+  ungroup()
+
+pathogens_filtered |>
+  ggplot(aes(x = site, y = score_normalized, color = site)) +
+  geom_jitter(alpha = 0.5, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
+  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
+  facet_wrap(~name, nrow = 2, scale = 'free') +
+  scale_color_manual(values = site_pal) +
+  theme_minimal() +
+  #scale_y_continuous(trans = 'log10') +
+  labs(title = 'Relative abundance of each pathogen of interest', y = 'abundance') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 7)
+  )
+
+```
+
+```{r}
+
+wilcox_test_tidy <- function(data, name_col, cluster_col, score_col) {
+  
+  data |> 
+    group_by(!!sym(name_col)) |> 
+    # For each subgroup, we create combinations of two clusters
+    group_modify(~ {
+      sub_data <- .x
+      clusters <- unique(sub_data[[cluster_col]])
+      
+      # Generate all cluster pairs
+      cluster_pairs <- combn(clusters, 2, simplify = FALSE)
+      
+      # Apply the Wilcoxon test for each pair of clusters
+      map_dfr(cluster_pairs, function(cluster_pair) {
+        cluster_data <- sub_data |> 
+          filter(!!sym(cluster_col) |>  cluster_pair)
+        
+        # Check whether both clusters contain observations
+        if (length(unique(cluster_data[[cluster_col]])) == 2) {
+          # Apply Wilcox test
+          test_result <- wilcox.test(cluster_data[[score_col]] ~ cluster_data[[cluster_col]])
+          
+          # Return results as a dataframe
+          tibble(cluster_1 = cluster_pair[1], 
+                 cluster_2 = cluster_pair[2], 
+                 p_value = test_result$p.value)
+        } else {
+          #Return a line with NA if the test cannot be applied
+          tibble(cluster_1 = cluster_pair[1], 
+                 cluster_2 = cluster_pair[2], 
+                 p_value = NA)
+        }
+      })
+    }) |> 
+    ungroup() |> 
+    rename(!!name_col := 1)
+}
+
+
+wilcox_results <- wilcox_test_tidy(data = pathogens_filtered, 
+                              name_col = "name", 
+                              cluster_col = "cluster", 
+                              score_col = "score_normalized")
+
+
+```
+
+```{r}
+genus <- c("fusobacterium", "candida", "neisseria", 
+           "streptococcus", "rothia", "porphyromonas", 
+           "tannerella", "parvimonas", 
+           "peptostreptococcus")
+
+genus_id <- c(848, 1535326, 482, 1301, 32207, 836, 195950, 543311,1257 )
+
+#here we have to take the original 'metada'
+
+patho_genus <- metada |>
+  filter(sample_type == 'Primary Tumor') |> 
+  #filter(!is.na(cluster)) |> 
+  filter(tax_id %in% genus_id)
+
+
+```
+
+```{r}
+patho_genus |> 
+  filter(!is.na(cluster)) |> 
+  ggplot(aes(cluster, score_normalized, color=cluster))+
+  #geom_boxplot(outliers = FALSE, width= 0.2)+
+  geom_jitter(alpha = 0.5, width = 0.1) + 
+  stat_summary(fun = median, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +
+  facet_wrap(~name, nrow=2, scale = 'free')+
+  scale_color_manual(values = clst_pal)+
+  theme_minimal()+
+  #scale_y_continuous(trans='log10')+
+  labs(title = 'Relative abundance of each pathogen of interest', y='abundance (genus level)')+
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 7)
+  )
+```
+
+```{r}
+patho_genus_filtered <- patho_genus |>
+  filter(!is.na(site)) |> 
+  filter(!is.na(cluster)) |> #NA values cannot be used to apply wilcox
+  group_by(site, name) |>
+  mutate(
+    Q1 = quantile(score_normalized, 0.25),
+    Q3 = quantile(score_normalized, 0.75),
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR
+  ) |>
+  filter(score_normalized >= lower_bound & score_normalized <= upper_bound) |> ungroup()
+
+
+patho_genus_filtered |>
+  filter(!is.na(site)) |> 
+  ggplot(aes(x = site, y = score_normalized, color = site)) +
+  geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
+  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
+  facet_wrap(~name, nrow = 2, scale = 'free') +
+  scale_color_manual(values = site_pal) +
+  theme_minimal() +
+  #scale_y_continuous(trans = 'log10') +
+  labs(title = 'Relative abundance of each pathogen of interest (genus level)', y = 'abundance') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 7)
+  )
+
+```
+
+```{r}
+wilcox_results_genus <- wilcox_test_tidy(data = patho_genus_filtered, 
+                              name_col = "name", 
+                              cluster_col = "cluster", 
+                              score_col = "score_normalized")
+
+
+
+```
+
+```{r}
+species2 <- c("streptococcus_parasanguinis", "prevotella_melaninogenica", "streptococcus_mitis", "streptococcus_salivarius", "rothia_mucilaginosa", "fusobacterium_nucleatum", "neisseria_meningitidis", "porphyromonas_gingivalis", "streptococcus_oralis", "fusobacterium_periodonticum", "treponema_vincentii", "neisseria_elongata", "streptococcus_peroris", "porphyromonas_endodontalis", "treponema_denticola", "treponema_socranskii", "porphyromonas_uenonis", "streptococcus_anginosus")
+
+data_species_tongue<- metada |>
+  filter( type== 'species') |> 
+  filter(!is.na(cluster)) |> 
+  filter(sample_type == 'Primary Tumor') |>
+  filter(sub_site =='Oral Tongue') |> 
+  select('name' | 'score_normalized' | 'cluster')
+
+data_genus <- metada |> 
+  filter(type == 'genus') |> 
+  filter(!is.na(cluster))
+
+
+sp_id2 <- c(1318, 28132, 28037, 1304, 43675, 851, 487, 837, 1303, 860, 69710, 495, 68891, 28124, 158, 53419, 281920, 1328, 5476)
+
+patho_species2 <- metada |>
+  filter(sample_type == 'Primary Tumor') |> 
+  #filter(!is.na(cluster)) |> 
+  filter(tax_id %in% sp_id2)
+
+patho_species2_filtered<- patho_species2 |>
+  filter(!is.na(cluster)) |> 
+  group_by(cluster, name) |>
+  mutate(
+    Q1 = quantile(score_normalized, 0.25),
+    Q3 = quantile(score_normalized, 0.75),
+    IQR = Q3 - Q1,
+    lower_bound = Q1 - 1.5 * IQR,
+    upper_bound = Q3 + 1.5 * IQR
+  ) |>
+  filter(score_normalized >= lower_bound & score_normalized <= upper_bound) |> ungroup()
+
+
+patho_species2_filtered |>
+  ggplot(aes(x = cluster, y = score_normalized,  fill= cluster, color = cluster)) +
+  geom_violin(alpha = 0.5)+
+ # geom_boxplot(width= 0.1, fill= 'white')+
+  #geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
+  #stat_summary(fun = median, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
+  facet_wrap(~name, nrow = 3, scale = 'free') +
+  scale_fill_manual(values = clst_pal) +
+  scale_color_manual(values =clst_pal)+
+  theme_minimal() +
+  #scale_y_continuous(trans = 'log10') +
+  labs(title = 'Relative abundance of each pathogen of interest', y = 'abundance') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 6), 
+    legend.text = element_text(size = 6),  
+    legend.title = element_text(size = 8)  
+  )
+
+```
+
+```{r}
+
+#creation of a function to apply the Wilcox test to each pathogen for each pair of clusters 
+
+compare_species <- function(df, colonne_name = "name", colonne_score = "score_normalized", colonne_cluster = "cluster") {
+  
+ 
+  results <- data.frame(
+    species = character(),
+    comparison = character(),
+    p_value = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # Extraire la liste des espèces uniques
+  especes <- unique(df[[colonne_name]])
+  
+  # Comparaisons de paires de clusters
+  clusters <- unique(df[[colonne_cluster]])
+  pairs_clusters <- combn(clusters, 2, simplify = FALSE)
+  
+  # Boucle sur chaque espèce
+  for (esp in especes) {
+    # Filtrer les données pour chaque espèce
+    df_esp <- df %>% filter(!!sym(colonne_name) == esp)
+    
+    # Vérifier qu'il y a au moins deux clusters avec des données
+    if (length(unique(df_esp[[colonne_cluster]])) < 2) {
+      message(paste("Espèce", esp, ": impossible de réaliser le test de Kruskal-Wallis, car toutes les observations sont dans le même groupe."))
+      next  # Passer à l'espèce suivante
+    }
+    
+    # Test de Kruskal-Wallis pour l'espèce : est ce qu'au moins un groupe provient d'une population dont la distribution diffère des autres
+    kruskal_test <- kruskal.test(df_esp[[colonne_score]] ~ df_esp[[colonne_cluster]])
+    
+    if (kruskal_test$p.value < 0.05) {
+      # Si le test de Kruskal est significatif, on fait les comparaisons deux à deux
+      for (pair in pairs_clusters) {
+        # Filtrer les données pour les clusters de la paire
+        df_pair <- df_esp %>% filter(!!sym(colonne_cluster) %in% pair)
+        
+        # Vérifier qu'on a bien 2 niveaux pour les clusters dans cette paire
+        if (length(unique(df_pair[[colonne_cluster]])) == 2) {
+          # Test de Wilcoxon (Mann-Whitney)
+          wilcox_test <- wilcox.test(df_pair[[colonne_score]] ~ df_pair[[colonne_cluster]])
+          
+          
+          results <- rbind(results, data.frame(
+            species = esp,
+            comparison = paste(pair[1], "vs", pair[2]),
+            p_value = wilcox_test$p.value
+          ))
+        } else {
+          # Si moins de 2 clusters, on saute cette comparaison
+          message(paste("Espèce", esp, ": impossible de comparer", pair[1], "vs", pair[2], "car un des clusters manque de données."))
+        }
+      }
+    }
+  }
+  
+  # Correction de Benjamini-Hochberg sur les p-values
+  results$p_adj <- p.adjust(results$p_value, method = "BH")
+
+  return(results)
+}
+
+
+
+# sans test de Kruskal 
+compare_species_optimise <- function(df, colonne_name = "name", colonne_score = "score_normalized", colonne_cluster = "cluster") {
+  
+ 
+  results_list <- list()
+  
+
+  especes <- unique(df[[colonne_name]])
+  
+
+  clusters <- unique(df[[colonne_cluster]])
+  pairs_clusters <- combn(clusters, 2, simplify = FALSE)
+  
+
+  for (esp in especes) {
+    df_esp <- df[df[[colonne_name]] == esp, ]
+    
+   
+    for (pair in pairs_clusters) {
+      # Filtrer les données pour les clusters de la paire
+      df_pair <- df_esp[df_esp[[colonne_cluster]] %in% pair, ]
+      
+      # Vérifier qu'on a bien 2 niveaux pour les clusters dans cette paire
+      if (length(unique(df_pair[[colonne_cluster]])) == 2) {
+        # Test de Wilcoxon (Mann-Whitney)
+        wilcox_test <- wilcox.test(df_pair[[colonne_score]] ~ df_pair[[colonne_cluster]])
+        
+        # Ajouter les résultats dans la liste
+        resultats_list[[length(resultats_list) + 1]] <- data.frame(
+          species = esp,
+          comparison = paste(pair[1], "vs", pair[2]),
+          p_value = wilcox_test$p.value,
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  
+  # Convertir la liste en dataframe
+  results <- do.call(rbind, results_list)
+  
+  # Correction de Benjamini-Hochberg sur les p-values
+  results$p_adj <- p.adjust(results$p_value, method = "BH")
+  
+
+  return(results)
+}
+
+res_kruskal <- compare_species(data_species_tongue, colonne_name= 'name', colonne_score = 'score_normalized', colonne_cluster = 'cluster')
+#aucune comparaison significative p.adj > 0.05
+
+res_optimise <- compare_species_optimise(data_species_tongue, colonne_name = 'name', colonne_score = 'score_normalized', colonne_cluster = 'cluster')
+#aucune comparaison significative p.adj = 1 
+
+
+```
+
+```{r}
+positive_samples_selected <- positive_samples |> 
+  filter(percentage > 25)
+
+positive_samples_selected |>
+  count(tax_id)
+all<- all |>
+  rename(cluster = V1)
+all<- all |> 
+left_join(positive_samples, by= c('tax_id', 'cluster'))
+
+cluster1_sbs <- all |> 
+  filter(cluster == '5mC deamin') |>
+  filter(V2 == 'SBS16-like') |> 
+  filter(percentage > 25)
+```
+
+```{r}
+
+#same test but at the genus level 
+
+wilcox_results_genus <- wilcox_test(data = data_genus, 
+                                  name_col ='name', 
+                                  cluster_col = 'cluster', 
+                                  score_col ='score_normalized') |>
+                                  filter(p_value <= 0.05)
+
+genus <- wilcox_results_genus |>
+  left_join(data, by= 'name') |> 
+  select (!c(id, score, score_normalized,reads,unambiguous, reference_length))|>
+  distinct()
+```
+
+```{r}
+genus_id <- genus |>
+  pull(tax_id) |>
+  unique()
+
+positive_samples_genus <- metada |>
+  filter(tax_id %in% genus_id) |> 
+  filter(!is.na(cluster)) |> 
+  group_by(tax_id, cluster) |>
+  summarise (positive_samples = n_distinct(id)) |> 
+  ungroup()
+
+total_samples_genus <- metada |>
+  filter(tax_id %in% genus_id) |> 
+  filter(!is.na(cluster)) |> 
+  group_by(cluster) |> 
+  summarise(sample_by_cluster = n_distinct(id))
+
+positive_samples_genus <- positive_samples_genus |>
+  left_join(total_samples_genus, by='cluster') 
+
+
+positive_samples_genus <- positive_samples_genus|> 
+  mutate( percentage = (positive_samples/sample_by_cluster)*100)
+
+genus<- genus |>
+  rename(cluster = V1)
+genus<- genus |> 
+left_join(positive_samples_genus, by= c('tax_id', 'cluster'))
+
+genus_id_filtered <- genus |> 
+  filter(percentage >25) |>
+  pull(tax_id) |>
+  unique()
+```
+
+same comparison with only tongue tumor
+
+```{r}
+ tongue_genus <- metada |>
+   filter(sample_type == 'Primary Tumor') |>
+   filter(sub_site == 'Oral Tongue') |> 
+   filter(!is.na(cluster)) |>
+   filter(tax_id %in% genus_id)
+ 
+ tongue_genus |> 
+  ggplot(aes(x = cluster, y = score_normalized,  color= cluster)) +
+  #geom_violin(alpha = 0.5)+
+ # geom_boxplot(width= 0.1, fill= 'white')+
+  geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
+  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
+  facet_wrap(~name, nrow = 3, scale = 'free') +
+  #scale_fill_manual(values = clst_pal) +
+  scale_color_manual(values =clst_pal)+
+  theme_minimal() +
+  #scale_y_continuous(trans = 'log10') +
+  labs(title = 'Relative abundance of each pathogen of interest (genus level) for tongue tumor sample', y = 'abundance') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 6), 
+    legend.text = element_text(size = 6),  
+    legend.title = element_text(size = 8)  
+  )
+```
+
+```{r}
+wilcox_tongue_genus <- wilcox_test(data = tongue_genus, 
+                              name_col = "name", 
+                              cluster_col = "cluster", 
+                              score_col = "score_normalized")
+
+write_xlsx(wilcox_tongue_genus, "wilcox_tongue_genus.xlsx")
+
+```
+
+```{r}
+ tongue_species <- metada |>
+   filter(sample_type == 'Primary Tumor') |>
+   filter(sub_site == 'Oral Tongue') |> 
+   filter(!is.na(cluster)) |>
+   filter(tax_id %in% sp_id2)
+ 
+ tongue_species |> 
+  ggplot(aes(x = cluster, y = score_normalized,  color= cluster)) +
+  #geom_violin(alpha = 0.5)+
+ # geom_boxplot(width= 0.1, fill= 'white')+
+  geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
+  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
+  facet_wrap(~name, nrow = 4, scale = 'free') +
+  #scale_fill_manual(values = clst_pal) +
+  scale_color_manual(values =clst_pal)+
+  theme_minimal() +
+  #scale_y_continuous(trans = 'log10') +
+  labs(title = 'Relative abundance of each pathogen of interest for tongue tumor sample', y = 'abundance') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 6), 
+    legend.text = element_text(size = 6),  
+    legend.title = element_text(size = 8)  
+  )
+```
+
+```{r}
+wilcox_tongue_species <- wilcox_test(data = tongue_species, 
+                              name_col = "name", 
+                              cluster_col = "cluster", 
+                              score_col = "score_normalized")
+
+write_xlsx(wilcox_tongue_species, "wilcox_tongue_species.xlsx")
+```
