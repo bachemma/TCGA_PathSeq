@@ -709,7 +709,7 @@ wilcox_test_tidy <- function(data, name_col, cluster_col, score_col) {
       # Apply the Wilcoxon test for each pair of clusters
       map_dfr(cluster_pairs, function(cluster_pair) {
         cluster_data <- sub_data |> 
-          filter(!!sym(cluster_col) |>  cluster_pair)
+          filter(!!sym(cluster_col) %in%  cluster_pair)
         
         # Check whether both clusters contain observations
         if (length(unique(cluster_data[[cluster_col]])) == 2) {
@@ -878,11 +878,83 @@ patho_species2_filtered |>
     legend.text = element_text(size = 6),  
     legend.title = element_text(size = 8)  
   )
+```
 
+same comparison with only tongue tumor
+
+```{r}
+ tongue_genus <- metada |>
+   filter(sample_type == 'Primary Tumor') |>
+   filter(sub_site == 'Oral Tongue') |> 
+   filter(!is.na(cluster)) |>
+   filter(tax_id %in% genus_id)
+ 
+ tongue_genus |> 
+  ggplot(aes(x = cluster, y = score_normalized,  color= cluster)) +
+  #geom_violin(alpha = 0.5)+
+ # geom_boxplot(width= 0.1, fill= 'white')+
+  geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
+  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
+  facet_wrap(~name, nrow = 3, scale = 'free') +
+  #scale_fill_manual(values = clst_pal) +
+  scale_color_manual(values =clst_pal)+
+  theme_minimal() +
+  #scale_y_continuous(trans = 'log10') +
+  labs(title = 'Relative abundance of each pathogen of interest (genus level) for tongue tumor sample', y = 'abundance') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 6), 
+    legend.text = element_text(size = 6),  
+    legend.title = element_text(size = 8)  
+  )
+ 
+ wilcox_tongue_genus <- wilcox_test_tidy(data = tongue_genus, 
+                              name_col = "name", 
+                              cluster_col = "cluster", 
+                              score_col = "score_normalized")
+
+write_xlsx(wilcox_tongue_genus, "wilcox_tongue_genus.xlsx")
 ```
 
 ```{r}
+ tongue_species <- metada |>
+   filter(sample_type == 'Primary Tumor') |>
+   filter(sub_site == 'Oral Tongue') |> 
+   filter(!is.na(cluster)) |>
+   filter(tax_id %in% sp_id2)
+ 
+ tongue_species |> 
+  ggplot(aes(x = cluster, y = score_normalized,  color= cluster)) +
+  #geom_violin(alpha = 0.5)+
+ # geom_boxplot(width= 0.1, fill= 'white')+
+  geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
+  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
+  facet_wrap(~name, nrow = 4, scale = 'free') +
+  #scale_fill_manual(values = clst_pal) +
+  scale_color_manual(values =clst_pal)+
+  theme_minimal() +
+  #scale_y_continuous(trans = 'log10') +
+  labs(title = 'Relative abundance of each pathogen of interest for tongue tumor sample', y = 'abundance') +
+  theme(
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
+    axis.ticks.x = element_blank(),
+    strip.text = element_text(size = 6), 
+    legend.text = element_text(size = 6),  
+    legend.title = element_text(size = 8)  
+  )
+ 
+wilcox_tongue_species <- wilcox_test_tidy(data = tongue_species, 
+                              name_col = "name", 
+                              cluster_col = "cluster", 
+                              score_col = "score_normalized")
 
+write_xlsx(wilcox_tongue_species, "wilcox_tongue_species.xlsx")
+```
+
+```{r}
 #creation of a function to apply the Wilcox test to each pathogen for each pair of clusters 
 
 compare_species <- function(df, colonne_name = "name", colonne_score = "score_normalized", colonne_cluster = "cluster") {
@@ -1007,149 +1079,47 @@ res_optimise <- compare_species_optimise(data_species_tongue, colonne_name = 'na
 ```
 
 ```{r}
-positive_samples_selected <- positive_samples |> 
-  filter(percentage > 25)
+#dans les résultats de res_kruskal (test de Kruskal + test de Wilcox), on filtre sur les p.adj <0.1
+significant_res_kruskal <- res_kruskal |> 
+  filter(p_adj<0.1) |> 
+  filter(comparison== '5mC deamin vs SBS16-like')
 
-positive_samples_selected |>
-  count(tax_id)
-all<- all |>
-  rename(cluster = V1)
-all<- all |> 
-left_join(positive_samples, by= c('tax_id', 'cluster'))
-
-cluster1_sbs <- all |> 
-  filter(cluster == '5mC deamin') |>
-  filter(V2 == 'SBS16-like') |> 
-  filter(percentage > 25)
-```
-
-```{r}
-
-#same test but at the genus level 
-
-wilcox_results_genus <- wilcox_test(data = data_genus, 
-                                  name_col ='name', 
-                                  cluster_col = 'cluster', 
-                                  score_col ='score_normalized') |>
-                                  filter(p_value <= 0.05)
-
-genus <- wilcox_results_genus |>
+positive_species <- significant_res_kruskal |>
+  rename(name = species) |> 
   left_join(data, by= 'name') |> 
   select (!c(id, score, score_normalized,reads,unambiguous, reference_length))|>
   distinct()
-```
 
-```{r}
-genus_id <- genus |>
+
+positive_species_id <- positive_species |> 
   pull(tax_id) |>
   unique()
 
-positive_samples_genus <- metada |>
-  filter(tax_id %in% genus_id) |> 
+positive_samples_species <- metada |> 
+  filter(tax_id %in% positive_species_id) |> 
   filter(!is.na(cluster)) |> 
   group_by(tax_id, cluster) |>
   summarise (positive_samples = n_distinct(id)) |> 
   ungroup()
 
-total_samples_genus <- metada |>
-  filter(tax_id %in% genus_id) |> 
+total_samples_species <- metada |> 
+  filter(tax_id %in% positive_species_id) |> 
   filter(!is.na(cluster)) |> 
   group_by(cluster) |> 
   summarise(sample_by_cluster = n_distinct(id))
 
-positive_samples_genus <- positive_samples_genus |>
-  left_join(total_samples_genus, by='cluster') 
-
-
-positive_samples_genus <- positive_samples_genus|> 
+positive_samples_species <- positive_samples_species |> 
+  left_join(total_samples_species,by='cluster') |> 
   mutate( percentage = (positive_samples/sample_by_cluster)*100)
 
-genus<- genus |>
-  rename(cluster = V1)
-genus<- genus |> 
-left_join(positive_samples_genus, by= c('tax_id', 'cluster'))
+positive_samples_species<- positive_samples_species |> 
+  filter (cluster == '5mC deamin')
 
-genus_id_filtered <- genus |> 
-  filter(percentage >25) |>
-  pull(tax_id) |>
-  unique()
-```
+positive_species <- positive_species |> 
+  left_join(positive_samples_species, by = 'tax_id')
 
-same comparison with only tongue tumor
+positive_species_path<- file.path(getwd(), "data", "positive_species.xls")
 
-```{r}
- tongue_genus <- metada |>
-   filter(sample_type == 'Primary Tumor') |>
-   filter(sub_site == 'Oral Tongue') |> 
-   filter(!is.na(cluster)) |>
-   filter(tax_id %in% genus_id)
- 
- tongue_genus |> 
-  ggplot(aes(x = cluster, y = score_normalized,  color= cluster)) +
-  #geom_violin(alpha = 0.5)+
- # geom_boxplot(width= 0.1, fill= 'white')+
-  geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
-  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
-  facet_wrap(~name, nrow = 3, scale = 'free') +
-  #scale_fill_manual(values = clst_pal) +
-  scale_color_manual(values =clst_pal)+
-  theme_minimal() +
-  #scale_y_continuous(trans = 'log10') +
-  labs(title = 'Relative abundance of each pathogen of interest (genus level) for tongue tumor sample', y = 'abundance') +
-  theme(
-    axis.title.x = element_blank(),
-    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
-    axis.ticks.x = element_blank(),
-    strip.text = element_text(size = 6), 
-    legend.text = element_text(size = 6),  
-    legend.title = element_text(size = 8)  
-  )
-```
 
-```{r}
-wilcox_tongue_genus <- wilcox_test(data = tongue_genus, 
-                              name_col = "name", 
-                              cluster_col = "cluster", 
-                              score_col = "score_normalized")
-
-write_xlsx(wilcox_tongue_genus, "wilcox_tongue_genus.xlsx")
-
-```
-
-```{r}
- tongue_species <- metada |>
-   filter(sample_type == 'Primary Tumor') |>
-   filter(sub_site == 'Oral Tongue') |> 
-   filter(!is.na(cluster)) |>
-   filter(tax_id %in% sp_id2)
- 
- tongue_species |> 
-  ggplot(aes(x = cluster, y = score_normalized,  color= cluster)) +
-  #geom_violin(alpha = 0.5)+
- # geom_boxplot(width= 0.1, fill= 'white')+
-  geom_jitter(alpha = 0.6, width = 0.1) +  # Scatterplot avec un léger écartement pour éviter la superposition
-  stat_summary(fun = mean, geom = "crossbar", color = "black", width = 0.5, size = 0.2) +  # Trait médian
-  facet_wrap(~name, nrow = 4, scale = 'free') +
-  #scale_fill_manual(values = clst_pal) +
-  scale_color_manual(values =clst_pal)+
-  theme_minimal() +
-  #scale_y_continuous(trans = 'log10') +
-  labs(title = 'Relative abundance of each pathogen of interest for tongue tumor sample', y = 'abundance') +
-  theme(
-    axis.title.x = element_blank(),
-    axis.text.x = element_blank(),  # Supprimer les labels de l'axe des x
-    axis.ticks.x = element_blank(),
-    strip.text = element_text(size = 6), 
-    legend.text = element_text(size = 6),  
-    legend.title = element_text(size = 8)  
-  )
-```
-
-```{r}
-wilcox_tongue_species <- wilcox_test(data = tongue_species, 
-                              name_col = "name", 
-                              cluster_col = "cluster", 
-                              score_col = "score_normalized")
-
-write_xlsx(wilcox_tongue_species, "wilcox_tongue_species.xlsx")
+write_xlsx(positive_species, positive_species_path)
 ```
