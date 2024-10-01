@@ -835,7 +835,10 @@ data_species_tongue<- metada |>
 
 data_genus <- metada |> 
   filter(type == 'genus') |> 
-  filter(!is.na(cluster))
+  filter(!is.na(cluster)) |> 
+ filter(sample_type == 'Primary Tumor') |>
+  filter(sub_site =='Oral Tongue') |> 
+  select('name' | 'score_normalized' | 'cluster')
 
 
 sp_id2 <- c(1318, 28132, 28037, 1304, 43675, 851, 487, 837, 1303, 860, 69710, 495, 68891, 28124, 158, 53419, 281920, 1328, 5476)
@@ -981,7 +984,7 @@ compare_species <- function(df, colonne_name = "name", colonne_score = "score_no
     
     # Vérifier qu'il y a au moins deux clusters avec des données
     if (length(unique(df_esp[[colonne_cluster]])) < 2) {
-      message(paste("Espèce", esp, ": impossible de réaliser le test de Kruskal-Wallis, car toutes les observations sont dans le même groupe."))
+      message(paste("Espèce", esp, ": impossible de réaliser le test de Kruskal-Wallis"))
       next  # Passer à l'espèce suivante
     }
     
@@ -1070,7 +1073,7 @@ compare_species_optimise <- function(df, colonne_name = "name", colonne_score = 
 }
 
 res_kruskal <- compare_species(data_species_tongue, colonne_name= 'name', colonne_score = 'score_normalized', colonne_cluster = 'cluster')
-#aucune comparaison significative p.adj > 0.05
+#aucune comparaison significative p.adj > 0.05 mais certaines p.adj<0.01
 
 res_optimise <- compare_species_optimise(data_species_tongue, colonne_name = 'name', colonne_score = 'score_normalized', colonne_cluster = 'cluster')
 #aucune comparaison significative p.adj = 1 
@@ -1122,4 +1125,51 @@ positive_species_path<- file.path(getwd(), "data", "positive_species.xls")
 
 
 write_xlsx(positive_species, positive_species_path)
+```
+
+```{r}
+#même chose mais avec le genre 
+
+res_kruskal_genus <- compare_species(data_genus, colonne_name= 'name', colonne_score = 'score_normalized', colonne_cluster = 'cluster')
+
+significant_res_kruskal_genus <- res_kruskal_genus |> 
+  filter(p_adj<0.1) |> 
+  filter(comparison== '5mC deamin vs SBS16-like')
+
+positive_genus <- significant_res_kruskal_genus |>
+  rename(name = species) |> 
+  left_join(data, by= 'name') |> 
+  select (!c(id, score, score_normalized,reads,unambiguous, reference_length))|>
+  distinct()
+
+
+positive_genus_id <- positive_genus |> 
+  pull(tax_id) |>
+  unique()
+
+positive_samples_genus<- metada |> 
+  filter(tax_id %in% positive_genus_id) |> 
+  filter(!is.na(cluster)) |> 
+  group_by(tax_id, cluster) |>
+  summarise (positive_samples = n_distinct(id)) |> 
+  ungroup()
+
+total_samples_genus <- metada |> 
+  filter(tax_id %in% positive_genus_id) |> 
+  filter(!is.na(cluster)) |> 
+  group_by(cluster) |> 
+  summarise(sample_by_cluster = n_distinct(id))
+
+positive_samples_genus <- positive_samples_genus |> 
+  left_join(total_samples_genus,by='cluster') |> 
+  mutate( percentage = (positive_samples/sample_by_cluster)*100) |> 
+  filter (cluster == '5mC deamin')
+
+positive_genus <- positive_genus |> 
+  left_join(positive_samples_genus, by = 'tax_id')
+
+positive_genus_path<- file.path(getwd(), "data", "positive_genus.xls")
+
+
+write_xlsx(positive_genus, positive_genus_path)
 ```
