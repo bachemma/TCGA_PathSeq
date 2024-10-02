@@ -8,7 +8,7 @@ The 'score' files contain the results from PathSeq, the way they can be download
 @id : the number id of each sample 
 @tax_id :  taxonomy identifier, which is a unique numerical ID assigned to each organism or taxonomic group in the NCBI
 @taxonomy :  the full taxonomic lineage of an organism, from the highest rank (such as root or kingdom) down to the sub-species level if possible 
-@type : the taxon's level identied (such as genus, specis, sub-species) 
+@type : the taxon's level identied (such as genus, specie, sub-species) 
 @name : the taxon's name 
 @kingdom : bacteria, viruses, fongi, archaea 
 @score : indicates the amount of evidence that this taxon is present, based on the number of reads that aligned to references in this taxon. 
