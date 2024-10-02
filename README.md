@@ -4,7 +4,7 @@ The Genome Analysis Toolkit (GATK)-PathSeq algorithm was employed to computation
 Subsequently, the remaining non-human reads were aligned to pre-built microbial reference genome downloaded from broad institute website using the BWA-MEM aligner, 
 facilitating the taxonomic classification of these residual sequences. 
 
-The 'score' files contain the results from PathSeq, the way they can be downloaded and put together in a table is available on the code
+The 'score' files contain the results from PathSeq, the way they can be downloaded and put together in a table is available on the code https://github.com/bachemma/TCGA_PathSeq.git
 @id : the number id of each sample 
 @tax_id :  taxonomy identifier, which is a unique numerical ID assigned to each organism or taxonomic group in the NCBI
 @taxonomy :  the full taxonomic lineage of an organism, from the highest rank (such as root or kingdom) down to the sub-species level if possible 
